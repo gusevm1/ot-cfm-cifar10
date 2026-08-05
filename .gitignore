@@ -1,7 +1,14 @@
 .venv/
 data/
 runs/
-# docs/ is the published results page — results.js and samples/ are committed on purpose.
+
 __pycache__/
 *.pyc
 .DS_Store
+
+# Generated results live on the gh-pages branch (see publish.sh), not here.
+docs/results.js
+docs/samples/
+docs/compare/
+docs/solver/
+.gh-pages/
