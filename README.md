@@ -31,6 +31,7 @@ python test_sanity.py                      # spec §6.1 checks — run this firs
 python train.py --steps 50000 --batch_size 256 --out runs/base
 python evaluate.py --ckpt runs/base/ckpt.pt --n 10000 --method dopri5 --fid
 python export_results.py                   # refresh docs/results.js for the page
+node test_page.js                          # check the page renders at every stage of a run
 ```
 
 `train.py` auto-resumes from `runs/<name>/ckpt.pt` if it exists, so a killed run picks up where it
