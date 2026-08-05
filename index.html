@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OT-CFM on CIFAR-10 — results</title>
+<style>
+  :root { color-scheme: light dark; --fg:#111; --dim:#666; --line:#ddd; --bg:#fff; --panel:#fafafa;
+          --accent:#2f6fed; --accent2:#d4763a; --accent3:#2e9e6b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e8e8e8; --dim:#999; --line:#333; --bg:#111; --panel:#191919;
+            --accent:#7aa2f7; --accent2:#e0a072; --accent3:#68c99a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:2.5rem 1.25rem 5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width: 920px; margin: 0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .25rem; }
+  h2 { font-size:1rem; text-transform:uppercase; letter-spacing:.08em; color:var(--dim);
+       margin:2.75rem 0 .75rem; font-weight:600; }
+  p.sub { color:var(--dim); margin:0 0 .5rem; font-size:14px; }
+  a { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  td, th { text-align:left; padding:.4rem .6rem; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:600; }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .wrap { overflow-x:auto; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:1rem; }
+  figure { margin:0; }
+  figure img { width:100%; image-rendering:pixelated; border:1px solid var(--line); border-radius:4px; display:block; }
+  figcaption { color:var(--dim); font-size:12px; margin-top:.3rem; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.9em; }
+  .pill { display:inline-block; padding:.1rem .5rem; border:1px solid var(--line); border-radius:99px;
+          font-size:12px; color:var(--dim); margin:0 .35rem .35rem 0; }
+  .ok { color:#1a9c5b; }
+  svg { width:100%; height:auto; display:block; }
+
+  /* status panel */
+  .status { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:1rem 1.1rem; }
+  .bar { height:6px; border-radius:99px; background:var(--line); overflow:hidden; margin:.15rem 0 .9rem; }
+  .bar > i { display:block; height:100%; background:var(--accent); border-radius:99px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:.9rem 1.2rem; }
+  .stat b { display:block; font-size:1.15rem; font-variant-numeric:tabular-nums; font-weight:600; line-height:1.25; }
+  .stat span { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+
+  /* scrubber + solver explorer */
+  .split { display:grid; grid-template-columns:minmax(0,320px) minmax(0,1fr); gap:1.75rem; align-items:start; }
+  @media (max-width:700px) { .split { grid-template-columns:1fr; } }
+  .viewer img { width:100%; aspect-ratio:1; image-rendering:pixelated; border:1px solid var(--line);
+                border-radius:6px; display:block; background:var(--panel); }
+  .controls { display:flex; align-items:center; gap:.6rem; margin-top:.75rem; }
+  .controls button { flex:0 0 2.2rem; height:2.2rem; border:1px solid var(--line); border-radius:6px;
+    background:transparent; color:var(--fg); cursor:pointer; font-size:13px; line-height:1; }
+  .controls button:hover { border-color:var(--accent); color:var(--accent); }
+  .controls input[type=range] { flex:1 1 auto; min-width:0; accent-color:var(--accent); }
+  .readout { font-variant-numeric:tabular-nums; font-size:13px; color:var(--dim); margin-top:.5rem; }
+  .readout b { color:var(--fg); font-weight:600; }
+  .segs { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.75rem; }
+  .segs button { padding:.3rem .6rem; border:1px solid var(--line); border-radius:6px; background:transparent;
+    color:var(--fg); cursor:pointer; font-size:12.5px; font-variant-numeric:tabular-nums; }
+  .segs button[aria-pressed=true] { border-color:var(--accent2); color:var(--accent2); font-weight:600; }
+  .toggles { display:flex; gap:1rem; font-size:12.5px; color:var(--dim); margin-bottom:.4rem; }
+  .toggles label { display:flex; align-items:center; gap:.3rem; cursor:pointer; }
+  .chart-label { font-size:12px; color:var(--dim); margin:.25rem 0 1.25rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>OT-CFM on CIFAR-10</h1>
+  <p class="sub">Class-unconditional Optimal-Transport Conditional Flow Matching &mdash; training run analytics.</p>
+  <p id="pills"></p>
+
+  <h2>Run status</h2>
+  <div class="status" id="status"></div>
+
+  <h2>Convergence</h2>
+  <p class="sub">The <em>same</em> fixed noise batch decoded by the EMA network at every checkpoint, so
+     differences between frames are the model moving, not the sampler. Drag the slider or press play.</p>
+  <div class="split" id="scrub"></div>
+
+  <h2>Generated vs real</h2>
+  <p class="sub">The model is unconditional, so no sample has a paired ground truth. The nearest
+     thing is retrieval: each generated image beside its closest real CIFAR-10 training image
+     (pixel-space L2). Rows alternate &mdash; <b>generated</b>, then <b>nearest real</b>, so every
+     column is a pair. Samples should move <em>toward</em> the real manifold as training proceeds;
+     a distance collapsing to zero would mean memorisation, not learning.</p>
+  <div class="split" id="compare"></div>
+
+  <h2>Sample quality</h2>
+  <div id="fid"></div>
+
+  <h2>Solver budget</h2>
+  <p class="sub">OT-CFM is trained to produce straight probability paths, so quality should survive a
+     small number of integration steps. Same noise batch at each budget, scored against adaptive dopri5.</p>
+  <div class="split" id="solver"></div>
+
+  <h2>Run configuration</h2>
+  <div class="wrap"><table id="cfg"></table></div>
+
+  <h2>Final evaluation</h2>
+  <div class="wrap"><table id="evals"></table></div>
+  <div class="grid" id="evalgrids"></div>
+
+  <h2>Sanity checks <span class="sub">(spec §6.1)</span></h2>
+  <div class="wrap"><table id="sanity"></table></div>
+  <div class="grid" id="sanityimgs"></div>
+
+  <h2>&nbsp;</h2>
+  <p class="sub">Generated by <code>export_results.py</code>.
+     Source: <a href="https://github.com/gusevm1/ot-cfm-cifar10">github.com/gusevm1/ot-cfm-cifar10</a></p>
+</main>
+
+<script src="results.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const el = (tag, cls, html) => { const e = document.createElement(tag);
+  if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+const rows = (t, pairs) => t.innerHTML = pairs.map(([k, v]) => `<tr><th>${k}</th><td class="n">${v}</td></tr>`).join("");
+const hms = s => s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.round(s % 3600 / 60)}m`
+             : s >= 60 ? `${Math.round(s / 60)}m` : `${Math.round(s)}s`;
+const nearest = (pts, x, key = "step") =>
+  pts.reduce((b, p) => Math.abs(p[key] - x) < Math.abs(b[key] - x) ? p : b, pts[0]);
+
+const C = DATA.config, M = DATA.metrics, S = DATA.samples, F = DATA.fid || [], SOLV = DATA.solver;
+
+/* ---------------- header + status ---------------- */
+if (C) {
+  $("pills").innerHTML = [
+    `${(C.n_params / 1e6).toFixed(2)}M params`, C.device, `batch ${C.batch_size}`,
+    `EMA ${C.ema_decay}`, `lr ${C.lr}`,
+  ].map(t => `<span class="pill">${t}</span>`).join("");
+
+  const last = M[M.length - 1], recent = M.slice(-10);
+  const step = last ? last.step : 0;
+  const secStep = recent.length ? recent.reduce((a, m) => a + m.sec_per_step, 0) / recent.length : null;
+  // Each record covers log_every steps; summing gives compute time, excluding sampling/checkpoint pauses.
+  const elapsed = M.reduce((a, m) => a + m.sec_per_step * C.log_every, 0);
+  const pct = Math.min(100, step / C.steps * 100);
+  // Loss over the last 20% of logged steps, against the 20% before it.
+  const tail = M.slice(-Math.max(2, Math.round(M.length * 0.2)));
+  const prevTail = M.slice(-2 * tail.length, -tail.length);
+  const mean = a => a.reduce((s, m) => s + m.loss, 0) / (a.length || 1);
+  const drop = prevTail.length ? (mean(prevTail) - mean(tail)) / mean(prevTail) * 100 : null;
+
+  $("status").innerHTML =
+    `<div class="readout" style="margin:0 0 .1rem"><b>${step.toLocaleString()}</b> / ${C.steps.toLocaleString()} steps
+      &nbsp;·&nbsp; ${pct.toFixed(1)}%</div>
+     <div class="bar"><i style="width:${pct}%"></i></div>
+     <div class="stats">
+       ${[["epochs", (step / C.steps_per_epoch).toFixed(1)],
+          ["loss", last ? last.loss.toFixed(4) : "—"],
+          ["loss trend", drop == null ? "—" : `${drop > 0 ? "−" : "+"}${Math.abs(drop).toFixed(1)}%`],
+          ["throughput", secStep ? `${Math.round(C.batch_size / secStep)} img/s` : "—"],
+          ["s / step", secStep ? secStep.toFixed(2) : "—"],
+          ["compute time", hms(elapsed)],
+          ["eta", secStep && step < C.steps ? hms((C.steps - step) * secStep) : "done"],
+         ].map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join("")}
+     </div>`;
+
+  rows($("cfg"), [
+    ["Architecture", `U-Net, ${C.base_channels} base ch, mult (1,2,2,2), 2 res blocks`],
+    ["Parameters", (C.n_params / 1e6).toFixed(2) + " M"],
+    ["Flow matcher", "ExactOptimalTransportConditionalFlowMatcher (σ=0)"],
+    ["Optimizer", `AdamW β=(0.9, 0.999), wd ${C.weight_decay}`],
+    ["LR schedule", `${C.lr} · ${C.warmup}-step linear warmup · cosine decay`],
+    ["Batch size", C.batch_size],
+    ["EMA decay", C.ema_decay],
+    ["Steps planned", `${C.steps.toLocaleString()} (${(C.steps / C.steps_per_epoch).toFixed(0)} epochs)`],
+    ["Device", C.device],
+  ]);
+} else {
+  $("status").innerHTML = `<p class="sub" style="margin:0">No run started yet.</p>`;
+}
+
+/* ---------------- charts ---------------- */
+// Returns setCursor(x); pass {smooth, logY} to redraw with different options.
+function chart(node, pts, opts) {
+  const state = { smooth: 0, logY: false, ...opts };
+  let X, Y, drawn = [];
+
+  function render() {
+    if (pts.length < 2) { node.innerHTML = `<p class="sub">${state.title}: not enough data yet.</p>`; return; }
+    drawn = pts.map(p => ({ ...p }));
+    if (state.smooth > 0) {           // one-pole EMA; keeps the shape, drops the minibatch noise
+      let acc = drawn[0].y;
+      for (const p of drawn) { acc = state.smooth * acc + (1 - state.smooth) * p.y; p.y = acc; }
+    }
+    const tf = v => state.logY ? Math.log10(Math.max(v, 1e-6)) : v;
+    const xMax = Math.max(...drawn.map(p => p.x));
+    const yVals = drawn.map(p => tf(p.y));
+    const yLo = state.logY ? Math.min(...yVals) : 0;
+    const yHi = Math.max(...yVals) + (state.logY ? 0.05 : Math.max(...yVals) * 0.05);
+    const W = 560, H = 190, P = { l: 54, r: 8, t: 8, b: 26 };
+    X = v => P.l + v / (xMax || 1) * (W - P.l - P.r);
+    Y = v => H - P.b - (tf(v) - yLo) / ((yHi - yLo) || 1) * (H - P.t - P.b);
+    const d = drawn.map((p, i) => (i ? "L" : "M") + X(p.x).toFixed(1) + " " + Y(p.y).toFixed(1)).join(" ");
+    const yTicks = [0, .25, .5, .75, 1].map(f => yLo + f * (yHi - yLo));
+    const xTicks = [0, .25, .5, .75, 1].map(f => f * xMax);
+    node.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${state.title}">
+      ${yTicks.map(t => { const raw = state.logY ? Math.pow(10, t) : t;
+        return `<line x1="${P.l}" x2="${W - P.r}" y1="${Y(raw)}" y2="${Y(raw)}" stroke="var(--line)"/>
+        <text x="${P.l - 8}" y="${Y(raw) + 4}" text-anchor="end" fill="var(--dim)" font-size="10">${state.fmt(raw)}</text>`;
+      }).join("")}
+      ${xTicks.map(v => `<text x="${X(v)}" y="${H - 8}" text-anchor="middle" fill="var(--dim)" font-size="10">${
+        v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + "k" : Math.round(v)}</text>`).join("")}
+      <path d="${d}" fill="none" stroke="${state.color}" stroke-width="1.6"/>
+      ${state.dots ? drawn.map(p => `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="2.5" fill="${state.color}"/>`).join("") : ""}
+      <line class="cur" x1="0" x2="0" y1="${P.t}" y2="${H - P.b}" stroke="${state.color}" stroke-width="1"
+            stroke-dasharray="3 3" opacity="0"/>
+      <circle class="dot" r="3.5" fill="${state.color}" opacity="0"/>
+    </svg><p class="chart-label">${state.title}</p>`;
+  }
+
+  function setCursor(x) {
+    const cur = node.querySelector(".cur"), dot = node.querySelector(".dot");
+    if (!cur || x == null || !drawn.length) return;
+    const p = nearest(drawn, x, "x");
+    cur.setAttribute("x1", X(p.x)); cur.setAttribute("x2", X(p.x)); cur.setAttribute("opacity", .6);
+    dot.setAttribute("cx", X(p.x)); dot.setAttribute("cy", Y(p.y)); dot.setAttribute("opacity", 1);
+  }
+  render();
+  setCursor.update = o => { Object.assign(state, o); render(); };
+  return setCursor;
+}
+
+/* ---------------- reusable image scrubber ---------------- */
+// items: [{src, ...}]. describe(item) -> readout HTML. onShow(item) fires on every frame.
+function scrubber(mount, items, describe, onShow) {
+  items.forEach(s => { const i = new Image(); i.src = s.src; });   // preload so scrubbing doesn't flash
+  const view = el("div", "viewer");
+  const img = el("img");
+  const ctl = el("div", "controls");
+  const play = el("button", null, "▶");
+  const slider = el("input");
+  const readout = el("div", "readout");
+  Object.assign(slider, { type: "range", min: 0, max: items.length - 1, step: 1 });
+  slider.setAttribute("aria-label", "Training step");
+  play.setAttribute("aria-label", "Play animation");
+  ctl.append(play, slider);
+  view.append(img, ctl, readout);
+  mount.append(view);
+
+  let timer = null;
+  const show = i => {
+    const it = items[i];
+    img.src = it.src;
+    img.alt = `${it.alt || "Generated CIFAR-10 samples"} at training step ${it.step}`;
+    readout.innerHTML = describe(it);
+    onShow?.(it);
+  };
+  const stop = () => { clearInterval(timer); timer = null; play.textContent = "▶";
+                       play.setAttribute("aria-label", "Play animation"); };
+  const start = () => {
+    if (+slider.value >= items.length - 1) slider.value = 0;
+    play.textContent = "❚❚"; play.setAttribute("aria-label", "Pause animation");
+    timer = setInterval(() => {
+      const next = +slider.value + 1;
+      if (next > items.length - 1) return stop();
+      slider.value = next; show(next);
+    }, 260);
+  };
+  slider.oninput = () => { stop(); show(+slider.value); };
+  play.onclick = () => (timer ? stop() : start());
+  slider.value = items.length - 1;
+  show(items.length - 1);
+}
+
+/* ---------------- convergence: scrubber + curves ---------------- */
+const scrub = $("scrub");
+if (S.length || M.length > 1) {
+  const left = el("div"), right = el("div");
+  scrub.append(left, right);
+
+  const lossBox = el("div"), deltaBox = el("div");
+  const toggles = el("div", "toggles",
+    `<label><input type="checkbox" id="tsmooth" checked> smooth</label>
+     <label><input type="checkbox" id="tlog"> log scale</label>`);
+  right.append(toggles, lossBox, deltaBox);
+
+  const lossCur = chart(lossBox, M.map(m => ({ x: m.step, y: m.loss })),
+    { color: "var(--accent)", smooth: 0.8, title: "OT-CFM training loss vs step", fmt: v => v.toFixed(3) });
+  const deltaCur = chart(deltaBox, S.filter(s => s.delta != null).map(s => ({ x: s.step, y: s.delta })),
+    { color: "var(--accent2)", dots: true, fmt: v => v.toFixed(1),
+      title: "mean |Δ| between consecutive frames (uint8) — how fast samples stop moving" });
+
+  $("tsmooth").onchange = e => { lossCur.update({ smooth: e.target.checked ? 0.8 : 0 }); sync(); };
+  $("tlog").onchange = e => { lossCur.update({ logY: e.target.checked });
+                              deltaCur.update({ logY: e.target.checked }); sync(); };
+
+  let current = null;
+  const sync = () => { lossCur(current); deltaCur(current); };
+
+  if (S.length) {
+    scrubber(left, S.map(s => ({ ...s, alt: "8×8 grid of generated CIFAR-10 samples" })), s => {
+      const m = M.length ? nearest(M, s.step) : null;
+      return [
+        `step <b>${s.step.toLocaleString()}</b>`,
+        C ? `epoch <b>${(s.step / C.steps_per_epoch).toFixed(1)}</b>` : null,
+        m ? `loss <b>${m.loss.toFixed(4)}</b>` : null,
+        s.delta != null ? `Δ <b>${s.delta.toFixed(1)}</b>/255` : null,
+      ].filter(Boolean).join(" &nbsp;·&nbsp; ");
+    }, s => { current = s.step; sync(); });
+  } else {
+    left.innerHTML = `<p class="sub">Sample grids appear at the first checkpoint.</p>`;
+  }
+} else {
+  scrub.innerHTML = `<p class="sub">Nothing logged yet.</p>`;
+}
+
+/* ---------------- generated vs nearest real ---------------- */
+const CMP = DATA.compare || [];
+if (CMP.length) {
+  const left = el("div"), right = el("div");
+  $("compare").append(left, right);
+
+  const box = el("div");
+  right.append(box);
+  const nnCur = chart(box, CMP.map(c => ({ x: c.step, y: c.nn_mean })),
+    { color: "var(--accent3)", dots: true, fmt: v => v.toFixed(1),
+      title: "mean L2 to nearest real image vs step — lower is closer to the data, zero would be copying" });
+
+  scrubber(left, CMP.map(c => ({ ...c, alt: "generated samples above their nearest real CIFAR-10 images" })), c =>
+    [`step <b>${c.step.toLocaleString()}</b>`,
+     `mean L2 <b>${c.nn_mean.toFixed(1)}</b>`,
+     `closest <b>${c.nn_min.toFixed(1)}</b>`].join(" &nbsp;·&nbsp; "),
+    c => nnCur(c.step));
+
+  if (DATA.real_reference) {
+    right.append(el("figure", null,
+      `<img src="${DATA.real_reference}" alt="grid of 64 real CIFAR-10 training images">
+       <figcaption>64 real CIFAR-10 images, same layout as the sample grids above — the target to eyeball against.</figcaption>`));
+  }
+} else {
+  $("compare").innerHTML = `<p class="sub">No comparisons yet — run <code>compare.py</code>, or
+    <code>watch.py</code> to collect one at every checkpoint.</p>`;
+}
+
+/* ---------------- FID over training ---------------- */
+if (F.length) {
+  const n = F[0].n, note = el("p", "sub",
+    `FID of ${n.toLocaleString()} samples vs the CIFAR-10 train set, measured while training.
+     FID is biased upward at small sample counts &mdash; read this as a trend, not a score.
+     The 10k number is in <em>Final evaluation</em> below.`);
+  const box = el("div");
+  $("fid").append(note, box);
+  chart(box, F.map(f => ({ x: f.step, y: f.fid })),
+    { color: "var(--accent3)", dots: true, fmt: v => v.toFixed(0),
+      title: `FID-${(n / 1000)}k vs step (${F[0].method}${F[0].solver_steps ? "(" + F[0].solver_steps + ")" : ""} sampler)` });
+} else {
+  $("fid").innerHTML = `<p class="sub">No FID measurements yet — start <code>watch_fid.py</code> to track it during the run.</p>`;
+}
+
+/* ---------------- solver budget explorer ---------------- */
+if (SOLV && SOLV.entries.length) {
+  const E = SOLV.entries, left = el("div"), right = el("div");
+  $("solver").append(left, right);
+  E.forEach(e => { const i = new Image(); i.src = e.src; });
+
+  const view = el("div", "viewer");
+  const img = el("img"); img.alt = "generated samples at the selected solver budget";
+  const segs = el("div", "segs");
+  const readout = el("div", "readout");
+  view.append(img, segs, readout); left.append(view);
+
+  const ref = E.find(e => e.method === "dopri5");
+  const show = i => {
+    const e = E[i];
+    img.src = e.src;
+    img.alt = `generated samples using ${e.method}${e.steps ? " with " + e.steps + " steps" : ""}`;
+    [...segs.children].forEach((b, j) => b.setAttribute("aria-pressed", j === i));
+    readout.innerHTML = [
+      `<b>${e.nfe}</b> function evals`,
+      `<b>${(e.seconds / SOLV.n * 1000).toFixed(0)}</b> ms/image`,
+      e.method === "dopri5" ? "reference" : `Δ vs dopri5 <b>${e.mae_vs_dopri5.toFixed(1)}</b>/255`,
+    ].join(" &nbsp;·&nbsp; ");
+  };
+  E.forEach((e, i) => {
+    const b = el("button", null, e.method === "dopri5" ? "dopri5" : `${e.steps}`);
+    b.setAttribute("aria-pressed", "false");
+    b.onclick = () => show(i);
+    segs.append(b);
+  });
+
+  const box = el("div");
+  right.append(box);
+  chart(box, E.filter(e => e.method === "euler").map(e => ({ x: e.nfe, y: e.mae_vs_dopri5 })),
+    { color: "var(--accent2)", dots: true, fmt: v => v.toFixed(0),
+      title: `Euler error vs dopri5 (step ${SOLV.step.toLocaleString()}) — x: function evals, y: mean |Δ|/255` });
+  right.append(el("p", "sub",
+    `dopri5 spends <b>${ref ? ref.nfe : "?"}</b> function evaluations here. Everything at or below the
+     point where this curve flattens is free quality.`));
+
+  show(E.length - 1);
+} else {
+  $("solver").innerHTML = `<p class="sub">No solver sweep yet — run <code>sweep_solver.py</code>.</p>`;
+}
+
+/* ---------------- final eval + sanity ---------------- */
+if (DATA.evals.length) {
+  $("evals").innerHTML = `<tr><th>step</th><th>solver</th><th class="n">samples</th>
+      <th class="n">FID</th><th class="n">sampling</th></tr>` + DATA.evals.map(e =>
+    `<tr><td class="n">${e.step.toLocaleString()}</td>
+      <td>${e.method}${e.solver_steps ? "(" + e.solver_steps + ")" : ""}</td>
+      <td class="n">${e.n.toLocaleString()}</td>
+      <td class="n">${e.fid !== undefined ? e.fid.toFixed(2) + `<span class="sub"> vs ${e.fid_ref}</span>` : "&mdash;"}</td>
+      <td class="n">${(e.sample_seconds / 60).toFixed(1)} min</td></tr>`).join("");
+  $("evalgrids").innerHTML = DATA.evals.filter(e => e.grid).map(e =>
+    `<figure><img src="${e.grid}" alt="eval samples"><figcaption>${e.method} · step ${e.step.toLocaleString()}</figcaption></figure>`).join("");
+} else {
+  $("evals").innerHTML = `<tr><td class="sub">No 10k-sample FID recorded yet.</td></tr>`;
+}
+
+const K = DATA.sanity;
+if (K) {
+  const r = [];
+  if (K.overfit_16) r.push(
+    ["1. 16-image overfit — final MSE", `${K.overfit_16.final_loss.toFixed(5)} <span class="ok">✓ &lt; 0.05</span>`],
+    ["1. 16-image overfit — reconstruction MAE", `${K.overfit_16.recon_mae.toFixed(4)} <span class="ok">✓ &lt; 0.10</span>`]);
+  if (K.solver_invariance) r.push(
+    ["2. dopri5 vs euler(20) — mean |Δ|", `${K.solver_invariance.mae_uint8.toFixed(2)} / 255 <span class="ok">✓ &lt; 3</span>`],
+    ["2. dopri5 vs euler(20) — max |Δ|", `${K.solver_invariance.max_uint8.toFixed(0)} / 255`]);
+  if (K.hardware) r.push(
+    ["3. full epoch @ batch 256", `<span class="ok">✓ no OOM</span> (${K.hardware.steps_run} steps)`],
+    ["3. throughput", `${K.hardware.sec_per_step.toFixed(2)} s/step · ${K.hardware.epoch_minutes.toFixed(1)} min/epoch on ${K.hardware.device}`]);
+  rows($("sanity"), r);
+  $("sanityimgs").innerHTML = `
+    <figure><img src="samples/overfit16.png" alt="overfit test"><figcaption>top: 16 targets · bottom: dopri5 reconstruction</figcaption></figure>
+    <figure><img src="samples/solver_invariance.png" alt="solver invariance"><figcaption>top: dopri5 · bottom: euler(20)</figcaption></figure>`;
+} else {
+  $("sanity").innerHTML = `<tr><td class="sub">Not run yet.</td></tr>`;
+}
+</script>
+</body>
+</html>
