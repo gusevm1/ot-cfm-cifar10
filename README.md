@@ -34,6 +34,17 @@ python export_results.py                   # refresh docs/results.js for the pag
 node test_page.js                          # check the page renders at every stage of a run
 ```
 
+While a run is in flight, two optional trackers feed the analytics on the page:
+
+```bash
+python watch_fid.py --every 2000 --n 2000  # FID vs step, appended to runs/base/fid.jsonl
+python sweep_solver.py                     # quality vs solver budget at the current checkpoint
+```
+
+`watch_fid.py` polls the checkpoint and shells out to `evaluate.py`, so it can be started, killed
+and restarted without disturbing training. Its 2k-sample FID is biased upward — it is a trend line,
+not a score. Quote the 10k number from `evaluate.py`.
+
 `train.py` auto-resumes from `runs/<name>/ckpt.pt` if it exists, so a killed run picks up where it
 left off. It writes `metrics.jsonl`, an 8×8 sample grid every `--sample_every` steps, and a
 checkpoint every `--ckpt_every`.
@@ -53,6 +64,7 @@ network, ~6× cheaper, near-identical images (see the solver-invariance check).
 | §4 `odeint(..., method='dopri5')`, clamp → uint8 | `otcfm.sample`, `otcfm.to_uint8` |
 | §6.1 overfit / solver invariance / OOM checks | `test_sanity.py` |
 | §6.2 8×8 grid + 10k-sample clean-FID | `evaluate.py` |
+| — analytics (FID vs step, solver budget, results page) | `watch_fid.py`, `sweep_solver.py`, `docs/` |
 
 **Parameter count.** The spec estimates ~11.5M for that configuration; `torchcfm`'s U-Net at
 exactly those hyperparameters is **9.28M**. The knobs match the spec, the count is what it is.
