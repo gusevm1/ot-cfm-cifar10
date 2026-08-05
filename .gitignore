@@ -1,0 +1,7 @@
+.venv/
+data/
+runs/
+# docs/ is the published results page — results.js and samples/ are committed on purpose.
+__pycache__/
+*.pyc
+.DS_Store

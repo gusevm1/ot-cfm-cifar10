@@ -1,0 +1,7 @@
+torch>=2.4
+torchvision
+torchcfm>=1.0.7
+torchdiffeq>=0.2.5
+pot
+clean-fid
+tqdm
