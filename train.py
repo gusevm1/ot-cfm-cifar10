@@ -22,6 +22,8 @@ def main():
     p.add_argument("--warmup", type=int, default=500)
     p.add_argument("--weight_decay", type=float, default=1e-4)
     p.add_argument("--ema_decay", type=float, default=0.9999)
+    p.add_argument("--no_ema_warmup", action="store_true",
+                   help="apply ema_decay from step 1 (literal spec); see otcfm.build_ema")
     p.add_argument("--base_channels", type=int, default=64)
     p.add_argument("--grad_clip", type=float, default=1.0)
     p.add_argument("--num_workers", type=int, default=4)
@@ -39,7 +41,7 @@ def main():
     (out / "samples").mkdir(parents=True, exist_ok=True)
 
     model = build_model(args.base_channels).to(device)
-    ema = build_ema(model, args.ema_decay).to(device)
+    ema = build_ema(model, args.ema_decay, warmup=not args.no_ema_warmup).to(device)
     n_params = sum(p.numel() for p in model.parameters())
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.999),

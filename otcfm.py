@@ -31,9 +31,25 @@ def build_model(base_channels=64):
     )
 
 
-def build_ema(model, decay=0.9999):
-    """Spec §1: shadow copy, EMA decay 0.9999. torch.optim.swa_utils already does this."""
-    return AveragedModel(model, multi_avg_fn=get_ema_multi_avg_fn(decay), use_buffers=True)
+def build_ema(model, decay=0.9999, warmup=True):
+    """Spec §1: shadow copy, EMA decay 0.9999.
+
+    `warmup` ramps the decay in as min(decay, (1 + t) / (10 + t)) instead of applying the
+    target from step one. Without it the shadow weights stay ~`decay^t` random initialisation:
+    at 0.9999 that is still 90% noise after 1000 steps and does not wash out for ~10k, so every
+    sample, FID and retrieval measured before then is meaningless. The correction is standard
+    (DDPM, diffusers) and asymptotically identical — it only removes the initialisation bias,
+    the same way Adam's bias correction does. Pass warmup=False for the literal spec.
+    """
+    if not warmup:
+        return AveragedModel(model, multi_avg_fn=get_ema_multi_avg_fn(decay), use_buffers=True)
+
+    @torch.no_grad()
+    def ema_update(ema_params, model_params, num_averaged):
+        t = int(num_averaged)
+        torch._foreach_lerp_(ema_params, model_params, 1 - min(decay, (1 + t) / (10 + t)))
+
+    return AveragedModel(model, multi_avg_fn=ema_update, use_buffers=True)
 
 
 def cifar10(train=True, augment=True):

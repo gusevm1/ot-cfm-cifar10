@@ -78,6 +78,14 @@ exactly those hyperparameters is **9.28M**. The knobs match the spec, the count 
   every call, which duplicates pairs. The 16-image test freezes the coupling once
   (`pi.argmax`) so "integrate from x₀, get x₁ back" is a deterministic claim.
 - **Gradient clipping** at 1.0 is on by default. Not in the spec; `--grad_clip 0` disables it.
+- **EMA warmup.** Applying β = 0.9999 from step one leaves the shadow weights at `β^t` random
+  initialisation — still 90% noise after 1000 steps, and not washed out for ~10k. Measured here:
+  the raw model produced recognisable images at step 1000 while the EMA produced pure static, so
+  every sample, FID and retrieval before ~10k steps would have been meaningless. The decay is
+  therefore ramped in as `min(β, (1+t)/(10+t))`, the standard DDPM/diffusers correction — it
+  removes the initialisation bias exactly the way Adam's bias correction does. Note this caps the
+  effective decay at `(1+t)/(10+t)` until t ≈ 90k, so a 40k-step run tops out near 0.99975 rather
+  than 0.9999. `--no_ema_warmup` restores the literal spec.
 
 ## Reaching the spec's FID targets
 
