@@ -4,6 +4,9 @@ import json
 import shutil
 from pathlib import Path
 
+import numpy as np
+from PIL import Image
+
 DOCS = Path("docs")
 
 
@@ -11,23 +14,26 @@ def main(run="runs/base", sanity="runs/sanity"):
     run, sanity = Path(run), Path(sanity)
     (DOCS / "samples").mkdir(parents=True, exist_ok=True)
 
-    data = {"config": None, "metrics": [], "samples": [], "sanity": None, "evals": []}
+    data = {"config": None, "metrics": [], "samples": [], "sanity": None, "evals": [],
+            "fid": [], "solver": None}
 
     if (run / "config.json").exists():
         data["config"] = json.loads((run / "config.json").read_text())
 
-    if (run / "metrics.jsonl").exists():
-        for line in (run / "metrics.jsonl").read_text().splitlines():
-            if line.strip():
-                data["metrics"].append(json.loads(line))
+    for key, path in (("metrics", run / "metrics.jsonl"), ("fid", run / "fid.jsonl")):
+        if path.exists():
+            data[key] = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
 
-    # Keep ~8 evenly spaced grids so the page stays small.
-    grids = sorted((run / "samples").glob("*.png"))
-    if grids:
-        keep = grids if len(grids) <= 8 else [grids[round(i * (len(grids) - 1) / 7)] for i in range(8)]
-        for g in dict.fromkeys(keep):
-            shutil.copy(g, DOCS / "samples" / g.name)
-            data["samples"].append({"step": int(g.stem), "src": f"samples/{g.name}"})
+    # Every grid: the page scrubs through them. Each is a ~90 KB 256x256 PNG.
+    # `delta` is the mean |Δ| in uint8 against the previous grid — same fixed noise batch,
+    # so it measures how much the samples are still moving, i.e. convergence speed.
+    prev = None
+    for g in sorted((run / "samples").glob("*.png")):
+        shutil.copy(g, DOCS / "samples" / g.name)
+        cur = np.asarray(Image.open(g).convert("RGB"), dtype=np.float32)
+        delta = None if prev is None else float(np.abs(cur - prev).mean())
+        prev = cur
+        data["samples"].append({"step": int(g.stem), "src": f"samples/{g.name}", "delta": delta})
 
     for name in ("overfit16.png", "solver_invariance.png"):
         if (sanity / name).exists():
@@ -43,9 +49,16 @@ def main(run="runs/base", sanity="runs/sanity"):
             e["grid"] = f"samples/{g.name}"
         data["evals"].append(e)
 
+    if (run / "solver" / "solver.json").exists():
+        data["solver"] = json.loads((run / "solver" / "solver.json").read_text())
+        (DOCS / "solver").mkdir(exist_ok=True)
+        for e in data["solver"]["entries"]:
+            shutil.copy(run / "solver" / Path(e["src"]).name, DOCS / "solver" / Path(e["src"]).name)
+
     (DOCS / "results.js").write_text("const DATA = " + json.dumps(data, indent=1) + ";\n")
-    print(f"docs/results.js  <-  {len(data['metrics'])} log points, "
-          f"{len(data['samples'])} grids, {len(data['evals'])} evals")
+    print(f"docs/results.js  <-  {len(data['metrics'])} log points, {len(data['samples'])} grids, "
+          f"{len(data['fid'])} FID points, {len(data['evals'])} evals, "
+          f"{len(data['solver']['entries']) if data['solver'] else 0} solver budgets")
 
 
 if __name__ == "__main__":
