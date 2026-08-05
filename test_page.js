@@ -54,6 +54,9 @@ const full = {
             { step: 40000, src: "samples/0040000.png", delta: 1.2 }],
   fid: [{ step: 2000, fid: 92.1, n: 2000, method: "euler", solver_steps: 20, seconds: 240 },
         { step: 40000, fid: 34.7, n: 2000, method: "euler", solver_steps: 20, seconds: 240 }],
+  compare: [{ step: 1000, n: 16, src: "compare/0001000_nn.png", nn_mean: 21.4, nn_min: 15.2, nn_max: 27.9 },
+            { step: 40000, n: 16, src: "compare/0040000_nn.png", nn_mean: 14.8, nn_min: 9.1, nn_max: 19.3 }],
+  real_reference: "compare/real_reference.png",
   solver: { step: 40000, n: 64, entries: [
     { method: "dopri5", steps: null, nfe: 122, seconds: 8.1, mae_vs_dopri5: 0, src: "solver/dopri5.png" },
     { method: "euler", steps: 1, nfe: 1, seconds: 0.1, mae_vs_dopri5: 41.2, src: "solver/euler1.png" },
@@ -66,11 +69,14 @@ const full = {
           { step: 40000, method: "euler", solver_steps: 20, n: 10000, sample_seconds: 280 }],
 };
 
-run("empty", { config: null, metrics: [], samples: [], sanity: null, evals: [], fid: [], solver: null });
+run("empty", { config: null, metrics: [], samples: [], sanity: null, evals: [], fid: [], solver: null,
+               compare: [], real_reference: null });
 // One log point, no checkpoint yet — what the page looks like in the first minutes of a run.
 run("just started", { ...full, metrics: full.metrics.slice(0, 1), samples: [], fid: [], solver: null,
-                      evals: [], sanity: full.sanity });
+                      evals: [], compare: [], real_reference: null, sanity: full.sanity });
 run("mid run", { ...full, solver: null, evals: [] });
+// A single comparison point: the NN chart has one point and must not divide by zero.
+run("one compare point", { ...full, compare: full.compare.slice(0, 1), solver: null, evals: [] });
 run("full", full);
 if (fs.existsSync("docs/results.js")) {
   run("current", JSON.parse(fs.readFileSync("docs/results.js", "utf8")

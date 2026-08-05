@@ -78,6 +78,14 @@
      differences between frames are the model moving, not the sampler. Drag the slider or press play.</p>
   <div class="split" id="scrub"></div>
 
+  <h2>Generated vs real</h2>
+  <p class="sub">The model is unconditional, so no sample has a paired ground truth. The nearest
+     thing is retrieval: each generated image beside its closest real CIFAR-10 training image
+     (pixel-space L2). Rows alternate &mdash; <b>generated</b>, then <b>nearest real</b>, so every
+     column is a pair. Samples should move <em>toward</em> the real manifold as training proceeds;
+     a distance collapsing to zero would mean memorisation, not learning.</p>
+  <div class="split" id="compare"></div>
+
   <h2>Sample quality</h2>
   <div id="fid"></div>
 
@@ -215,6 +223,48 @@ function chart(node, pts, opts) {
   return setCursor;
 }
 
+/* ---------------- reusable image scrubber ---------------- */
+// items: [{src, ...}]. describe(item) -> readout HTML. onShow(item) fires on every frame.
+function scrubber(mount, items, describe, onShow) {
+  items.forEach(s => { const i = new Image(); i.src = s.src; });   // preload so scrubbing doesn't flash
+  const view = el("div", "viewer");
+  const img = el("img");
+  const ctl = el("div", "controls");
+  const play = el("button", null, "▶");
+  const slider = el("input");
+  const readout = el("div", "readout");
+  Object.assign(slider, { type: "range", min: 0, max: items.length - 1, step: 1 });
+  slider.setAttribute("aria-label", "Training step");
+  play.setAttribute("aria-label", "Play animation");
+  ctl.append(play, slider);
+  view.append(img, ctl, readout);
+  mount.append(view);
+
+  let timer = null;
+  const show = i => {
+    const it = items[i];
+    img.src = it.src;
+    img.alt = `${it.alt || "Generated CIFAR-10 samples"} at training step ${it.step}`;
+    readout.innerHTML = describe(it);
+    onShow?.(it);
+  };
+  const stop = () => { clearInterval(timer); timer = null; play.textContent = "▶";
+                       play.setAttribute("aria-label", "Play animation"); };
+  const start = () => {
+    if (+slider.value >= items.length - 1) slider.value = 0;
+    play.textContent = "❚❚"; play.setAttribute("aria-label", "Pause animation");
+    timer = setInterval(() => {
+      const next = +slider.value + 1;
+      if (next > items.length - 1) return stop();
+      slider.value = next; show(next);
+    }, 260);
+  };
+  slider.oninput = () => { stop(); show(+slider.value); };
+  play.onclick = () => (timer ? stop() : start());
+  slider.value = items.length - 1;
+  show(items.length - 1);
+}
+
 /* ---------------- convergence: scrubber + curves ---------------- */
 const scrub = $("scrub");
 if (S.length || M.length > 1) {
@@ -241,50 +291,48 @@ if (S.length || M.length > 1) {
   const sync = () => { lossCur(current); deltaCur(current); };
 
   if (S.length) {
-    S.forEach(s => { const i = new Image(); i.src = s.src; });   // preload so scrubbing doesn't flash
-    const view = el("div", "viewer");
-    const img = el("img"); img.alt = "8×8 grid of generated CIFAR-10 samples";
-    const ctl = el("div", "controls");
-    const play = el("button", null, "▶"); play.setAttribute("aria-label", "Play sample animation");
-    const slider = el("input"); Object.assign(slider, { type: "range", min: 0, max: S.length - 1, step: 1 });
-    slider.setAttribute("aria-label", "Training step");
-    const readout = el("div", "readout");
-    ctl.append(play, slider); view.append(img, ctl, readout); left.append(view);
-
-    let timer = null;
-    const show = i => {
-      const s = S[i];
-      img.src = s.src;
-      img.alt = `8×8 grid of generated CIFAR-10 samples at step ${s.step}`;
+    scrubber(left, S.map(s => ({ ...s, alt: "8×8 grid of generated CIFAR-10 samples" })), s => {
       const m = M.length ? nearest(M, s.step) : null;
-      readout.innerHTML = [
+      return [
         `step <b>${s.step.toLocaleString()}</b>`,
         C ? `epoch <b>${(s.step / C.steps_per_epoch).toFixed(1)}</b>` : null,
         m ? `loss <b>${m.loss.toFixed(4)}</b>` : null,
         s.delta != null ? `Δ <b>${s.delta.toFixed(1)}</b>/255` : null,
       ].filter(Boolean).join(" &nbsp;·&nbsp; ");
-      current = s.step; sync();
-    };
-    const stop = () => { clearInterval(timer); timer = null; play.textContent = "▶";
-                         play.setAttribute("aria-label", "Play sample animation"); };
-    const start = () => {
-      if (+slider.value >= S.length - 1) slider.value = 0;
-      play.textContent = "❚❚"; play.setAttribute("aria-label", "Pause sample animation");
-      timer = setInterval(() => {
-        const next = +slider.value + 1;
-        if (next > S.length - 1) return stop();
-        slider.value = next; show(next);
-      }, 260);
-    };
-    slider.oninput = () => { stop(); show(+slider.value); };
-    play.onclick = () => (timer ? stop() : start());
-    slider.value = S.length - 1;
-    show(S.length - 1);
+    }, s => { current = s.step; sync(); });
   } else {
     left.innerHTML = `<p class="sub">Sample grids appear at the first checkpoint.</p>`;
   }
 } else {
   scrub.innerHTML = `<p class="sub">Nothing logged yet.</p>`;
+}
+
+/* ---------------- generated vs nearest real ---------------- */
+const CMP = DATA.compare || [];
+if (CMP.length) {
+  const left = el("div"), right = el("div");
+  $("compare").append(left, right);
+
+  const box = el("div");
+  right.append(box);
+  const nnCur = chart(box, CMP.map(c => ({ x: c.step, y: c.nn_mean })),
+    { color: "var(--accent3)", dots: true, fmt: v => v.toFixed(1),
+      title: "mean L2 to nearest real image vs step — lower is closer to the data, zero would be copying" });
+
+  scrubber(left, CMP.map(c => ({ ...c, alt: "generated samples above their nearest real CIFAR-10 images" })), c =>
+    [`step <b>${c.step.toLocaleString()}</b>`,
+     `mean L2 <b>${c.nn_mean.toFixed(1)}</b>`,
+     `closest <b>${c.nn_min.toFixed(1)}</b>`].join(" &nbsp;·&nbsp; "),
+    c => nnCur(c.step));
+
+  if (DATA.real_reference) {
+    right.append(el("figure", null,
+      `<img src="${DATA.real_reference}" alt="grid of 64 real CIFAR-10 training images">
+       <figcaption>64 real CIFAR-10 images, same layout as the sample grids above — the target to eyeball against.</figcaption>`));
+  }
+} else {
+  $("compare").innerHTML = `<p class="sub">No comparisons yet — run <code>compare.py</code>, or
+    <code>watch.py</code> to collect one at every checkpoint.</p>`;
 }
 
 /* ---------------- FID over training ---------------- */
