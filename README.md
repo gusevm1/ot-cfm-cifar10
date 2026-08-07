@@ -6,6 +6,22 @@ and [`torchdiffeq`](https://github.com/rtqichen/torchdiffeq). Runs on CUDA, MPS 
 
 📊 **[Results page →](https://gusevm1.github.io/ot-cfm-cifar10/)**
 
+## Result
+
+| | |
+|---|---|
+| **FID** (10k samples, dopri5, vs CIFAR-10 train) | **25.03** |
+| FID (10k samples, euler(50)) | 25.76 |
+| Model | 9.28M-param U-Net, class-unconditional |
+| Training | 40,000 steps @ batch 256 = 205 epochs, ~11 h on an M3 Max (MPS, fp32) |
+| Sampling cost | dopri5 spends 134 function evals; euler(50) matches it to 2.44/255 |
+
+This is **not** the spec's FID < 10, and it was never reachable here — see
+[Reaching the spec's FID targets](#reaching-the-specs-fid-targets). `torchcfm`'s published 3.6
+uses a 35.7M U-Net for 400k steps, roughly 4× the parameters and 10× the steps. What this repo
+demonstrates is a correct, instrumented, reproducible OT-CFM pipeline that transfers to CUDA
+unchanged.
+
 Training minimises `‖v_θ(x_t, t) − u_t‖²` where `(t, x_t, u_t)` come from an *exact minibatch OT*
 coupling between Gaussian noise and data. Sampling integrates `dx/dt = v_θ(x, t)` from `t=0` to
 `t=1` with an adaptive ODE solver.
