@@ -6711,7 +6711,30 @@ const DATA = {
    "max_uint8": 12.0
   }
  },
- "evals": [],
+ "evals": [
+  {
+   "ckpt": "runs/base/ckpt.pt",
+   "step": 40000,
+   "n": 10000,
+   "method": "dopri5",
+   "solver_steps": null,
+   "sample_seconds": 987.3077828884125,
+   "fid": 25.025481608694633,
+   "fid_ref": "cifar10-train",
+   "grid": "samples/grid_dopri5.png"
+  },
+  {
+   "ckpt": "runs/base/ckpt.pt",
+   "step": 40000,
+   "n": 10000,
+   "method": "euler",
+   "solver_steps": 50,
+   "sample_seconds": 362.7344419956207,
+   "fid": 25.755976877898206,
+   "fid_ref": "cifar10-train",
+   "grid": "samples/grid_euler.png"
+  }
+ ],
  "fid": [
   {
    "step": 2000,
